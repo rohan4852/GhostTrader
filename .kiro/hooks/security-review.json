@@ -1,0 +1,12 @@
+{
+    "name": "Security Review",
+    "description": "Manual trigger to review security aspects of the extension",
+    "trigger": {
+        "type": "manual"
+    },
+    "action": {
+        "type": "sendMessage",
+        "message": "Please perform a security review of the AITrader extension:\n1. Verify API keys are stored only in chrome.storage.local (not sync)\n2. Check that screenshots are not persisted to disk\n3. Ensure no sensitive data is logged to console\n4. Verify HTTPS is used for all API calls\n5. Check that permissions are minimal and justified\n6. Review error messages don't leak sensitive information\n7. Ensure no XSS vulnerabilities in UI rendering"
+    },
+    "enabled": true
+}

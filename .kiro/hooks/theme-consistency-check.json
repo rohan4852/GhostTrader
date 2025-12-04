@@ -1,0 +1,13 @@
+{
+    "name": "Theme Consistency Check",
+    "description": "Verify Halloween theme consistency when CSS or UI files are modified",
+    "trigger": {
+        "type": "onFileSave",
+        "filePattern": "{styles.css,popup.html,popup.js}"
+    },
+    "action": {
+        "type": "sendMessage",
+        "message": "A UI file was modified. Please verify Halloween theme consistency:\n\n**Color Palette:**\n- Primary orange: #ff6b00\n- Backgrounds: #0a0a0a, #1a0a1a, #2a0a2a\n- Decision colors: #00ff88 (up), #ff3366 (down), #ffaa00 (no trade)\n\n**Visual Effects:**\n- Text shadows with orange glow\n- Box shadows for atmospheric lighting\n- Floating animations on button emojis\n\n**Button Text:**\n- Default: 'SUMMON PREDICTION'\n- Loading: 'Summoning Spirits...'\n\n**AI Persona:**\n- 'Ghost of Wall Street' with spooky metaphors\n\nVerify all changes maintain the Halloween theme aesthetic."
+    },
+    "enabled": true
+}

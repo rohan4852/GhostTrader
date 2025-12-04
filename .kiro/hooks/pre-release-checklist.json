@@ -1,0 +1,12 @@
+{
+    "name": "Pre-Release Checklist",
+    "description": "Manual trigger to run through pre-release checklist before publishing",
+    "trigger": {
+        "type": "manual"
+    },
+    "action": {
+        "type": "sendMessage",
+        "message": "Running pre-release checklist for AITrader extension:\n\n**Testing:**\n- [ ] All unit tests pass\n- [ ] All property tests pass\n- [ ] Manual testing with real Gemini API completed\n- [ ] Tested with multiple chart types\n- [ ] Error handling verified\n\n**Security:**\n- [ ] API key storage is secure\n- [ ] No sensitive data in logs\n- [ ] Permissions are minimal\n\n**Documentation:**\n- [ ] README.md is up to date\n- [ ] Version number updated in manifest.json\n- [ ] CHANGELOG updated\n\n**Chrome Web Store:**\n- [ ] Screenshots prepared\n- [ ] Privacy policy reviewed\n- [ ] Store listing description ready\n\nPlease verify each item and report any issues."
+    },
+    "enabled": true
+}

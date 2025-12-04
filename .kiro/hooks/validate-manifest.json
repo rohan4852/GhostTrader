@@ -1,0 +1,13 @@
+{
+    "name": "Validate Manifest on Change",
+    "description": "Validate manifest.json structure and permissions when it's modified",
+    "trigger": {
+        "type": "onFileSave",
+        "filePattern": "manifest.json"
+    },
+    "action": {
+        "type": "sendMessage",
+        "message": "The manifest.json file was modified. Please validate that:\n1. The JSON is valid\n2. All required Manifest V3 fields are present\n3. Permissions are minimal and justified\n4. The version number follows semantic versioning\n5. Host permissions are correctly configured for the Gemini API"
+    },
+    "enabled": true
+}
