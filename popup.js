@@ -63,8 +63,6 @@ const DOM = {
 
 
     // Configuration
-    timeframe: document.getElementById('timeframe'),
-    analysisMode: document.getElementById('analysisMode'),
     captureMode: document.getElementById('captureMode'),
 
     // Controls
@@ -117,8 +115,6 @@ class StorageManager {
     static async saveAnalysisConfig(config) {
         try {
             await chrome.storage.local.set({
-                timeframe: config.timeframe,
-                analysisMode: config.analysisMode,
                 captureMode: config.captureMode
             });
         } catch (error) {
@@ -129,20 +125,14 @@ class StorageManager {
     static async loadAnalysisConfig() {
         try {
             const result = await chrome.storage.local.get([
-                'timeframe',
-                'analysisMode',
                 'captureMode'
             ]);
             return {
-                timeframe: result.timeframe || '1h',
-                analysisMode: result.analysisMode || 'quantitative',
                 captureMode: result.captureMode || 'video'
             };
         } catch (error) {
             console.error('Error loading analysis config:', error);
             return {
-                timeframe: '1h',
-                analysisMode: 'quantitative',
                 captureMode: 'video'
             };
         }
@@ -1541,7 +1531,7 @@ class QuantumAnalysisOrchestrator {
         commonAssets.forEach(asset => {
             dataPromises[asset] = LiveMarketDataAPI.getLiveOlympTradeData(
                 asset,
-                config.timeframe,
+                '1h', // Default 1-hour timeframe
                 finnhubKey
             ).catch(() => null);
         });
@@ -1565,7 +1555,7 @@ class QuantumAnalysisOrchestrator {
             // Use Promise.race with timeout for speed
             const dataPromise = LiveMarketDataAPI.getLiveOlympTradeData(
                 detectedAsset,
-                config.timeframe,
+                '1h', // Default 1-hour timeframe
                 finnhubKey
             );
 
@@ -1584,8 +1574,6 @@ class QuantumAnalysisOrchestrator {
     static async getAnalysisConfig() {
         const config = await StorageManager.loadAnalysisConfig();
         return {
-            timeframe: DOM.timeframe.value || config.timeframe,
-            analysisMode: DOM.analysisMode.value || config.analysisMode,
             captureMode: DOM.captureMode.value || config.captureMode
         };
     }
@@ -1611,12 +1599,12 @@ class QuantumAnalysisOrchestrator {
             // Detect symbol from current tab URL or default to EURUSD
             const symbol = await this.detectTradingSymbol() || 'EURUSD';
 
-            console.log(`🔴 Fetching live data for ${symbol} on ${config.timeframe} timeframe`);
+            console.log(`🔴 Fetching live data for ${symbol} on 1h timeframe`);
 
             // Get comprehensive live market data
             const liveMarketData = await LiveMarketDataAPI.getLiveOlympTradeData(
                 symbol,
-                config.timeframe,
+                '1h', // Default 1-hour timeframe
                 finnhubKey
             );
 
@@ -1853,8 +1841,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Load saved configuration
     const config = await StorageManager.loadAnalysisConfig();
-    DOM.timeframe.value = config.timeframe;
-    DOM.analysisMode.value = config.analysisMode;
     DOM.captureMode.value = config.captureMode;
 
     console.log('QuantumTrader Extension Loaded Successfully');
@@ -1890,11 +1876,9 @@ DOM.toggleMarketDataKey.addEventListener('click', () => {
 });
 
 // Configuration changes
-[DOM.timeframe, DOM.analysisMode, DOM.captureMode].forEach(element => {
+[DOM.captureMode].forEach(element => {
     element.addEventListener('change', async () => {
         const config = {
-            timeframe: DOM.timeframe.value,
-            analysisMode: DOM.analysisMode.value,
             captureMode: DOM.captureMode.value
         };
         await StorageManager.saveAnalysisConfig(config);
