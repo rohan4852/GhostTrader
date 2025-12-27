@@ -44,12 +44,63 @@ SPEED-OPTIMIZED RULES:
 
 INSTANT OUTPUT (JSON ONLY - NO EXPLANATIONS):
 {
-  "decision": "BUY" | "SELL" | "NO TRADE",
+  "decision": "BET UP" | "BET DOWN" | "NO TRADE",
   "confidence": "HIGH" | "MEDIUM" | "LOW",
   "confidencePercentage": 65-95,
   "duration": "5-30 minutes",
   "reason": "One sentence: Visual + Live data alignment"
 }`;
+
+// ============================================================================
+// SUPPORTED ASSETS (Stocks.txt)
+// ============================================================================
+class StocksTxtCatalog {
+    static async getRawText() {
+        if (!this._rawTextPromise) {
+            this._rawTextPromise = (async () => {
+                const url = chrome.runtime.getURL('Stocks.txt');
+                const res = await fetch(url);
+                if (!res.ok) {
+                    throw new Error(`Failed to load Stocks.txt (${res.status})`);
+                }
+                return await res.text();
+            })();
+        }
+        return await this._rawTextPromise;
+    }
+
+    static async getSupportedAssetsText() {
+        if (!this._supportedAssetsTextPromise) {
+            this._supportedAssetsTextPromise = (async () => {
+                const raw = await this.getRawText();
+                const lines = raw
+                    .split(/\r?\n/)
+                    .map(l => l.trim())
+                    .filter(Boolean);
+
+                // Keep it list-like for the model: drop headings and descriptive sentences.
+                const kept = [];
+                for (const line of lines) {
+                    if (/^\d+\./.test(line)) continue; // section headings like "1. ..."
+                    if (/these are|available for|you can trade|this is a selection/i.test(line)) continue;
+                    kept.push(line);
+                }
+
+                // Safety guard: never send an empty list.
+                if (kept.length === 0) {
+                    return raw.trim();
+                }
+
+                return kept.join('\n');
+            })();
+        }
+
+        return await this._supportedAssetsTextPromise;
+    }
+}
+
+StocksTxtCatalog._rawTextPromise = null;
+StocksTxtCatalog._supportedAssetsTextPromise = null;
 
 // ============================================================================
 // DOM ELEMENTS
@@ -1137,6 +1188,18 @@ class GeminiAPI {
                 throw new Error('Response missing required fields');
             }
 
+            // Normalize decision to Olymp Trade FTT wording.
+            // We accept legacy Gemini outputs (BUY/SELL) but always display BET UP/BET DOWN/NO TRADE.
+            const decisionRaw = String(analysisResult.decision || '').trim();
+            const decisionLower = decisionRaw.toLowerCase();
+            if (decisionLower.includes('no trade') || decisionLower === 'hold') {
+                analysisResult.decision = 'NO TRADE';
+            } else if (decisionLower.includes('bet down') || decisionLower.includes('sell') || decisionLower.includes('down')) {
+                analysisResult.decision = 'BET DOWN';
+            } else if (decisionLower.includes('bet up') || decisionLower.includes('buy') || decisionLower.includes('up')) {
+                analysisResult.decision = 'BET UP';
+            }
+
             // Ensure confidencePercentage is a valid number if present
             if (analysisResult.confidencePercentage !== undefined) {
                 analysisResult.confidencePercentage = parseInt(analysisResult.confidencePercentage, 10);
@@ -1195,7 +1258,7 @@ class UIManager {
         // Determine result color class
         const decisionLower = analysis.decision.toLowerCase();
         let colorClass = 'bet-up';
-        if (decisionLower.includes('sell') || decisionLower.includes('down')) {
+        if (decisionLower.includes('bet down') || decisionLower.includes('sell') || decisionLower.includes('down')) {
             colorClass = 'bet-down';
         } else if (decisionLower.includes('no trade') || decisionLower.includes('hold')) {
             colorClass = 'no-trade';
@@ -1629,9 +1692,49 @@ class QuantumAnalysisOrchestrator {
             const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
             const url = tab.url?.toLowerCase() || '';
 
+            console.log(`🔍 ASSET DETECTION DEBUG:`);
+            console.log(`📍 Current URL: ${url}`);
+            console.log(`📍 Tab title: ${tab.title || 'No title'}`);
+
             // Comprehensive asset patterns for Olymp Trade
             const assetPatterns = {
-                // Forex pairs
+                // 1. Composite Indices (Exclusive to Olymp Trade)
+                'altcoin': 'ALTCOIN_INDEX',
+                'altcoinindex': 'ALTCOIN_INDEX',
+                'basicaltcoin': 'ALTCOIN_INDEX',
+                'arabian': 'ARABIAN_GENERAL_INDEX',
+                'arabiangeneral': 'ARABIAN_GENERAL_INDEX',
+                'asia': 'ASIA_COMPOSITE_INDEX',
+                'asiacomposite': 'ASIA_COMPOSITE_INDEX',
+                'asia_x': 'ASIA_COMPOSITE_INDEX',
+                'astro': 'ASTRO_INDEX',
+                'astroindex': 'ASTRO_INDEX',
+                'dollar': 'BASIC_DOLLAR_INDEX',
+                'dollarindex': 'BASIC_DOLLAR_INDEX',
+                'basicdollar': 'BASIC_DOLLAR_INDEX',
+                'commodity': 'COMMODITY_COMPOSITE_INDEX',
+                'cmdty_x': 'COMMODITY_COMPOSITE_INDEX',
+                'commoditycomposite': 'COMMODITY_COMPOSITE_INDEX',
+                'cricket': 'CRICKET_INDEX',
+                'cricket23': 'CRICKET_INDEX',
+                'crypto': 'CRYPTO_COMPOSITE_INDEX',
+                'crypto_x': 'CRYPTO_COMPOSITE_INDEX',
+                'cryptocomposite': 'CRYPTO_COMPOSITE_INDEX',
+                'europe': 'EUROPE_COMPOSITE_INDEX',
+                'europe_x': 'EUROPE_COMPOSITE_INDEX',
+                'europecomposite': 'EUROPE_COMPOSITE_INDEX',
+                'football': 'FOOTBALL_INDEX',
+                'athletic': 'FOOTBALL_INDEX',
+                'globalfootball': 'FOOTBALL_INDEX',
+                'meme': 'MEME_INDEX',
+                'trump': 'TRUMP_MEME_INDEX',
+                'trumpmeme': 'TRUMP_MEME_INDEX',
+                'moonch': 'MOONCH_INDEX',
+                'quickler': 'QUICKLER',
+                'stable': 'STABLE_TICK_INDEX',
+                'stabletick': 'STABLE_TICK_INDEX',
+
+                // 2. Forex pairs (including OTC)
                 'eurusd': 'EURUSD',
                 'gbpusd': 'GBPUSD',
                 'usdjpy': 'USDJPY',
@@ -1645,20 +1748,26 @@ class QuantumAnalysisOrchestrator {
                 'audcad': 'AUDCAD',
                 'audchf': 'AUDCHF',
                 'audjpy': 'AUDJPY',
+                'audnzd': 'AUDNZD',
                 'cadchf': 'CADCHF',
                 'cadjpy': 'CADJPY',
                 'chfjpy': 'CHFJPY',
                 'euraud': 'EURAUD',
                 'eurcad': 'EURCAD',
                 'eurchf': 'EURCHF',
+                'eurnzd': 'EURNZD',
                 'gbpaud': 'GBPAUD',
                 'gbpcad': 'GBPCAD',
                 'gbpchf': 'GBPCHF',
+                'gbpnzd': 'GBPNZD',
                 'nzdcad': 'NZDCAD',
                 'nzdchf': 'NZDCHF',
                 'nzdjpy': 'NZDJPY',
+                'usdmxn': 'USDMXN',
+                'usdnok': 'USDNOK',
+                'usdsgd': 'USDSGD',
 
-                // Cryptocurrencies
+                // 3. Cryptocurrencies
                 'btcusd': 'BTCUSD',
                 'bitcoin': 'BTCUSD',
                 'btc': 'BTCUSD',
@@ -1674,11 +1783,21 @@ class QuantumAnalysisOrchestrator {
                 'adausd': 'ADAUSD',
                 'cardano': 'ADAUSD',
                 'ada': 'ADAUSD',
-                'dotusd': 'DOTUSD',
-                'polkadot': 'DOTUSD',
-                'dot': 'DOTUSD',
+                'avaxusd': 'AVAXUSD',
+                'avalanche': 'AVAXUSD',
+                'avax': 'AVAXUSD',
+                'bchusd': 'BCHUSD',
+                'bitcoincash': 'BCHUSD',
+                'bch': 'BCHUSD',
+                'solusd': 'SOLUSD',
+                'solana': 'SOLUSD',
+                'sol': 'SOLUSD',
+                'kusama': 'KUSAMA',
+                'moonbeam': 'MOONBEAM',
+                'polygon': 'POLYGON',
+                'uniswap': 'UNISWAP',
 
-                // Commodities
+                // 4. Commodities
                 'xauusd': 'XAUUSD',
                 'gold': 'XAUUSD',
                 'xau': 'XAUUSD',
@@ -1687,42 +1806,93 @@ class QuantumAnalysisOrchestrator {
                 'xag': 'XAGUSD',
                 'oil': 'CRUDE_OIL',
                 'crude': 'CRUDE_OIL',
-                'wti': 'CRUDE_OIL',
-                'brent': 'BRENT_OIL',
+                'wti': 'WTI_CRUDE_OIL',
+                'brent': 'BRENT_CRUDE_OIL',
+                'copper': 'COPPER',
+                'naturalgas': 'NATURAL_GAS',
+                'platinum': 'PLATINUM',
 
-                // Stock Indices
+                // 5. ETFs
+                'msci': 'ETF_MSCI_BRAZIL',
+                'brazil': 'ETF_MSCI_BRAZIL',
+                'nasdaq': 'NASDAQ',
+                'reversal': 'ETF_NASDAQ_REVERSAL',
+                'volatility': 'ETF_SP500_VOLATILITY',
+                'spdr': 'SPDR_SP500_ETF',
+                'realestate': 'US_REAL_ESTATE_ETF',
+
+                // 6. Stock Market Indices
                 'spx500': 'SPX500',
                 'sp500': 'SPX500',
                 's&p500': 'SPX500',
                 'nas100': 'NAS100',
-                'nasdaq': 'NAS100',
                 'dji30': 'DJI30',
                 'dow': 'DJI30',
+                'dowjones': 'DJI30',
                 'ftse100': 'FTSE100',
+                'ftse': 'FTSE100',
                 'dax30': 'DAX30',
+                'dax': 'DAX30',
                 'cac40': 'CAC40',
+                'cac': 'CAC40',
                 'nikkei': 'NIKKEI225',
                 'nikkei225': 'NIKKEI225',
                 'hangseng': 'HANGSENG',
-                'asx200': 'ASX200',
-                'tsx60': 'TSX60',
+                'russell': 'RUSSELL2000',
+                'russell2000': 'RUSSELL2000',
 
-                // Asian Indices
-                'asia': 'ASIA_COMPOSITE',
-                'asiacomposite': 'ASIA_COMPOSITE',
-                'asia_composite': 'ASIA_COMPOSITE',
-                'kospi': 'KOSPI',
-                'sensex': 'SENSEX',
-                'shangai': 'SHANGHAI_COMPOSITE',
-                'shanghai': 'SHANGHAI_COMPOSITE',
-                'shenzhen': 'SHENZHEN_COMPOSITE',
-                'taiwan': 'TAIWAN_WEIGHTED',
-                'jakarta': 'JAKARTA_COMPOSITE',
-                'kualalumpur': 'KLCI',
-                'singapore': 'STI',
-                'thailand': 'SET_INDEX',
-                'philippines': 'PSE_COMPOSITE',
-                'vietnam': 'VN_INDEX'
+                // 7. Individual Stocks
+                'amd': 'AMD',
+                'amazon': 'AMAZON',
+                'amzn': 'AMAZON',
+                'apple': 'APPLE',
+                'aapl': 'APPLE',
+                'baidu': 'BAIDU',
+                'boeing': 'BOEING',
+                'ba': 'BOEING',
+                'caterpillar': 'CATERPILLAR',
+                'cat': 'CATERPILLAR',
+                'cocacola': 'COCA_COLA',
+                'ko': 'COCA_COLA',
+                'facebook': 'META',
+                'meta': 'META',
+                'fb': 'META',
+                'goldman': 'GOLDMAN_SACHS',
+                'goldmansachs': 'GOLDMAN_SACHS',
+                'gs': 'GOLDMAN_SACHS',
+                'google': 'GOOGLE',
+                'alphabet': 'GOOGLE',
+                'googl': 'GOOGLE',
+                'ibm': 'IBM',
+                'intel': 'INTEL',
+                'intc': 'INTEL',
+                'mastercard': 'MASTERCARD',
+                'ma': 'MASTERCARD',
+                'mcdonalds': 'MCDONALDS',
+                'mcd': 'MCDONALDS',
+                'microsoft': 'MICROSOFT',
+                'msft': 'MICROSOFT',
+                'netflix': 'NETFLIX',
+                'nflx': 'NETFLIX',
+                'nike': 'NIKE',
+                'nke': 'NIKE',
+                'nvidia': 'NVIDIA',
+                'nvda': 'NVIDIA',
+                'oracle': 'ORACLE',
+                'orcl': 'ORACLE',
+                'pfizer': 'PFIZER',
+                'pfe': 'PFIZER',
+                'procter': 'PROCTER_GAMBLE',
+                'proctergamble': 'PROCTER_GAMBLE',
+                'pg': 'PROCTER_GAMBLE',
+                'starbucks': 'STARBUCKS',
+                'sbux': 'STARBUCKS',
+                'tesla': 'TESLA',
+                'tsla': 'TESLA',
+                'toyota': 'TOYOTA',
+                'tm': 'TOYOTA',
+                'visa': 'VISA',
+                'v': 'VISA'
             };
 
             // Check URL for asset indicators
@@ -1878,7 +2048,12 @@ class QuantumAnalysisOrchestrator {
             prompt += `\nLIVE DATA: UNAVAILABLE - Visual analysis only`;
         }
 
-        prompt += `\n\n⚡ INSTANT DECISION REQUIRED: Analyze ${config.captureMode} and provide immediate BUY/SELL/NO TRADE decision with confidence level.`;
+        // Provide the model a strict allowed-asset set so it can identify the exact asset from the chart UI.
+        const supportedAssetsText = await StocksTxtCatalog.getSupportedAssetsText();
+        prompt += `\n\nSUPPORTED ASSETS (from Stocks.txt)\n${supportedAssetsText}`;
+        prompt += `\n\nTASK: Identify which supported asset this chart is for. In your JSON output, add:\n- "identifiedAsset": one exact asset name/symbol from SUPPORTED ASSETS (best guess).\nIf you cannot tell, set identifiedAsset to "${detectedAsset}".`;
+
+        prompt += `\n\n⚡ INSTANT DECISION REQUIRED: Analyze ${config.captureMode} and provide immediate BET UP / BET DOWN / NO TRADE decision with confidence level.`;
 
         // Prepare payload based on capture mode
         let payload;
@@ -1928,7 +2103,9 @@ class QuantumAnalysisOrchestrator {
         const analysis = GeminiAPI.parseAnalysisResponse(apiResponse);
 
         // Enhance analysis with detected asset and live market data
-        analysis.detectedAsset = detectedAsset;
+        const identifiedAsset = analysis.identifiedAsset || analysis.asset || analysis.symbol;
+        analysis.identifiedAsset = identifiedAsset || null;
+        analysis.detectedAsset = identifiedAsset || detectedAsset;
         analysis.platform = 'Olymp Trade';
         analysis.captureType = config.captureMode;
 
