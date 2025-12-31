@@ -1,0 +1,18 @@
+{
+    "name": "quantumtrader-contracts",
+    "private": true,
+    "version": "0.1.0",
+    "description": "PS-004 RWA tokenization contracts (Hardhat)",
+    "scripts": {
+        "build": "hardhat compile",
+        "test": "hardhat test",
+        "deploy:local": "hardhat run scripts/deploy.js --network hardhat"
+    },
+    "devDependencies": {
+        "hardhat": "^2.22.18",
+        "@nomicfoundation/hardhat-toolbox": "^5.0.0"
+    },
+    "dependencies": {
+        "@openzeppelin/contracts": "^5.0.2"
+    }
+}
